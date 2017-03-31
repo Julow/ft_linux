@@ -44,8 +44,6 @@ ln -s "$LFS/tools" /
 
 su - lfs
 
-set -e
-
 cd "$LFS/sources"
 : ${LFS:?} ${LFS_TGT:?}
 
@@ -522,7 +520,7 @@ rpc: files
 
 # End /etc/nsswitch.conf
 EOF
-	tar -xf ../../tzdata2016j.tar.gz
+	tar -xf /sources/tzdata2016j.tar.gz
 	ZONEINFO=/usr/share/zoneinfo
 	mkdir -pv $ZONEINFO/{posix,right}
 	for tz in etcetera southamerica northamerica europe africa antarctica  \
@@ -534,4 +532,413 @@ EOF
 	cp -v zone.tab zone1970.tab iso3166.tab $ZONEINFO
 	zic -d $ZONEINFO -p America/New_York
 	unset ZONEINFO
+	cat > /etc/ld.so.conf << "EOF"
+# Begin /etc/ld.so.conf
+/usr/local/lib
+/opt/lib
+
+EOF
+	cat >> /etc/ld.so.conf << "EOF"
+# Add an include directory
+include /etc/ld.so.conf.d/*.conf
+
+EOF
+	mkdir -pv /etc/ld.so.conf.d
+)
+
+# ! interactive
+cp -v /usr/share/zoneinfo/"`tzselect`" /etc/localtime
+
+mv -v /tools/bin/{ld,ld-old}
+mv -v /tools/$(uname -m)-pc-linux-gnu/bin/{ld,ld-old}
+mv -v /tools/bin/{ld-new,ld}
+ln -sv /tools/bin/ld /tools/$(uname -m)-pc-linux-gnu/bin/ld
+
+gcc -dumpspecs | sed -e 's@/tools@@g'					\
+	-e '/\*startfile_prefix_spec:/{n;s@.*@/usr/lib/ @}'	\
+	-e '/\*cpp:/{n;s@$@ -isystem /usr/include@}' >		\
+	`dirname $(gcc --print-libgcc-file-name)`/specs
+
+( package "zlib-1.2.11.tar.xz"
+	./configure --prefix=/usr
+	make
+	make install
+	mv -v /usr/lib/libz.so.* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libz.so) /usr/lib/libz.so
+)
+
+( package "file-5.30.tar.gz"; ./configure --prefix=/usr; make; make install )
+
+( package "binutils-2.27.tar.bz2"
+	expect -c "spawn ls"
+	mkdir build; cd build
+	../configure --prefix=/usr	\
+		--enable-gold			\
+		--enable-ld=default		\
+		--enable-plugins		\
+		--enable-shared			\
+		--disable-werror		\
+		--with-system-zlib
+	make tooldir=/usr
+	make tooldir=/usr install
+)
+
+( package "gmp-6.1.2.tar.xz"
+	./configure --prefix=/usr	\
+		--enable-cxx			\
+		--disable-static		\
+		--docdir=/usr/share/doc/gmp-6.1.2
+	make
+	make check 2>&1 | tee gmp-check-log
+	awk '/# PASS:/{total+=$3} ; END{print total}' gmp-check-log
+	make install
+)
+
+( package "mpfr-3.1.5.tar.xz"
+	./configure --prefix=/usr		\
+		--disable-static			\
+		--enable-thread-safe		\
+		--docdir=/usr/share/doc/mpfr-3.1.5
+	make
+	make check
+	make install
+)
+
+( package "mpc-1.0.3.tar.gz"
+	./configure --prefix=/usr		\
+		--disable-static			\
+		--docdir=/usr/share/doc/mpc-1.0.3
+	make
+	make install
+)
+
+( package "gcc-6.3.0.tar.bz2"
+	case $(uname -m) in
+		x86_64) sed -e '/m64=/s/lib64/lib/' -i.orig gcc/config/i386/t-linux64 ;;
+	esac
+	mkdir build; cd build
+	SED=sed							\
+	../configure --prefix=/usr		\
+		--enable-languages=c,c++	\
+		--disable-multilib			\
+		--disable-bootstrap			\
+		--with-system-zlib
+	make
+	make install
+	ln -sv ../usr/bin/cpp /lib
+	ln -sv gcc /usr/bin/cc
+	install -v -dm755 /usr/lib/bfd-plugins
+	ln -sfv ../../libexec/gcc/$(gcc -dumpmachine)/6.3.0/liblto_plugin.so \
+		/usr/lib/bfd-plugins/
+	mkdir -pv /usr/share/gdb/auto-load/usr/lib
+	mv -v /usr/lib/*gdb.py /usr/share/gdb/auto-load/usr/lib
+)
+
+( package "bzip2-1.0.6.tar.gz"
+	patch -Np1 -i /sources/bzip2-1.0.6-install_docs-1.patch
+	sed -i 's@\(ln -s -f \)$(PREFIX)/bin/@\1@' Makefile
+	sed -i "s@(PREFIX)/man@(PREFIX)/share/man@g" Makefile
+	make -f Makefile-libbz2_so
+	make clean
+	make
+	make PREFIX=/usr install
+	cp -v bzip2-shared /bin/bzip2
+	cp -av libbz2.so* /lib
+	ln -sv ../../lib/libbz2.so.1.0 /usr/lib/libbz2.so
+	rm -v /usr/bin/{bunzip2,bzcat,bzip2}
+	ln -sv bzip2 /bin/bunzip2
+	ln -sv bzip2 /bin/bzcat
+)
+
+( package "pkg-config-0.29.1.tar.gz"
+	./configure --prefix=/usr			\
+		--with-internal-glib			\
+		--disable-compile-warnings		\
+		--disable-host-tool				\
+		--docdir=/usr/share/doc/pkg-config-0.29.1
+	make
+	make install
+)
+
+( package "ncurses-6.0.tar.gz"
+	sed -i '/LIBTOOL_INSTALL/d' c++/Makefile.in
+	./configure --prefix=/usr		\
+		--mandir=/usr/share/man		\
+		--with-shared				\
+		--without-debug				\
+		--without-normal			\
+		--enable-pc-files			\
+		--enable-widec
+	make
+	make install
+	mv -v /usr/lib/libncursesw.so.6* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libncursesw.so) /usr/lib/libncursesw.so
+	for lib in ncurses form panel menu ; do
+		rm -vf /usr/lib/lib${lib}.so
+		echo "INPUT(-l${lib}w)" > /usr/lib/lib${lib}.so
+		ln -sfv ${lib}w.pc /usr/lib/pkgconfig/${lib}.pc
+	done
+	rm -vf /usr/lib/libcursesw.so
+	echo "INPUT(-lncursesw)" > /usr/lib/libcursesw.so
+	ln -sfv libncurses.so /usr/lib/libcurses.so
+	mkdir -v /usr/share/doc/ncurses-6.0
+	cp -v -R doc/* /usr/share/doc/ncurses-6.0
+)
+
+( package "attr-2.4.47.src.tar.gz"
+	sed -i -e 's|/@pkg_name@|&-@pkg_version@|' include/builddefs.in
+	sed -i -e "/SUBDIRS/s|man[25]||g" man/Makefile
+	./configure --prefix=/usr		\
+		--bindir=/bin				\
+		--disable-static
+	make
+	make install install-dev install-lib
+	chmod -v 755 /usr/lib/libattr.so
+	mv -v /usr/lib/libattr.so.* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libattr.so) /usr/lib/libattr.so
+)
+
+( package "acl-2.2.52.src.tar.gz"
+	sed -i -e 's|/@pkg_name@|&-@pkg_version@|' include/builddefs.in
+	sed -i "s:| sed.*::g" test/{sbits-restore,cp,misc}.test
+	sed -i -e "/TABS-1;/a if (x > (TABS-1)) x = (TABS-1);" \
+		libacl/__acl_to_any_text.c
+	./configure --prefix=/usr		\
+		--bindir=/bin				\
+		--disable-static			\
+		--libexecdir=/usr/lib
+	make
+	make install install-dev install-lib
+	chmod -v 755 /usr/lib/libacl.so
+	mv -v /usr/lib/libacl.so.* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libacl.so) /usr/lib/libacl.so
+)
+
+( package "libcap-2.25.tar.xz"
+	sed -i '/install.*STALIBNAME/d' libcap/Makefile
+	make
+	make RAISE_SETFCAP=no lib=lib prefix=/usr install
+	chmod -v 755 /usr/lib/libcap.so
+	mv -v /usr/lib/libcap.so.* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libcap.so) /usr/lib/libcap.so
+)
+
+( package "sed-4.4.tar.xz"
+	sed -i 's/usr/tools/' build-aux/help2man
+	sed -i 's/panic-tests.sh//' Makefile.in
+	./configure --prefix=/usr --bindir=/bin
+	make
+	make html
+	make install
+	install -d -m755 /usr/share/doc/sed-4.4
+	install -m644 doc/sed.html /usr/share/doc/sed-4.4
+)
+
+( package "shadow-4.4.tar.xz"
+	sed -i 's/groups$(EXEEXT) //' src/Makefile.in
+	find man -name Makefile.in -exec sed -i 's/groups\.1 / /' {} \;
+	find man -name Makefile.in -exec sed -i 's/getspnam\.3 / /' {} \;
+	find man -name Makefile.in -exec sed -i 's/passwd\.5 / /' {} \;
+	sed -i -e 's@#ENCRYPT_METHOD DES@ENCRYPT_METHOD SHA512@' \
+		-e 's@/var/spool/mail@/var/mail@' etc/login.defs
+	echo '--- src/useradd.c   (old)
++++ src/useradd.c   (new)
+@@ -2027,6 +2027,8 @@
+        is_shadow_grp = sgr_file_present ();
+ #endif
+ 
++       get_defaults ();
++
+        process_flags (argc, argv);
+ 
+ #ifdef ENABLE_SUBIDS
+@@ -2036,8 +2038,6 @@
+            (!user_id || (user_id <= uid_max && user_id >= uid_min));
+ #endif                         /* ENABLE_SUBIDS */
+ 
+-       get_defaults ();
+-
+ #ifdef ACCT_TOOLS_SETUID
+ #ifdef USE_PAM
+        {' | patch -p0 -l
+	sed -i 's/1000/999/' etc/useradd
+	sed -i -e '47 d' -e '60,65 d' libmisc/myname.c
+	./configure --sysconfdir=/etc --with-group-name-max-length=32
+	make
+	make install
+	mv -v /usr/bin/passwd /bin
+)
+
+pwconv
+grpconv
+sed -i 's/yes/no/' /etc/default/useradd
+
+# !interactive
+passwd root
+
+( package "psmisc-22.21.tar.gz"
+	./configure --prefix=/usr
+	make
+	make install
+	mv -v /usr/bin/fuser /bin
+	mv -v /usr/bin/killall /bin
+)
+
+( package "iana-etc-2.30.tar.bz2"; make; make install )
+( package "m4-1.4.18.tar.xz"; ./configure --prefix=/usr; make; make install )
+( package "bison-3.0.4.tar.xz"; ./configure --prefix=/usr --docdir=/usr/share/doc/bison-3.0.4; make; make install )
+
+( package "flex-2.6.3.tar.gz"
+	HELP2MAN=/tools/bin/true \
+	./configure --prefix=/usr --docdir=/usr/share/doc/flex-2.6.3
+	make
+	make install
+	ln -sv flex /usr/bin/lex
+)
+
+( package "grep-3.0.tar.xz"; ./configure --prefix=/usr --bindir=/bin; make; make install )
+
+( package "readline-7.0.tar.gz"
+	sed -i '/MV.*old/d' Makefile.in
+	sed -i '/{OLDSUFF}/c:' support/shlib-install
+	./configure --prefix=/usr		\
+		--disable-static			\
+		--docdir=/usr/share/doc/readline-7.0
+	make SHLIB_LIBS=-lncurses
+	make SHLIB_LIBS=-lncurses install
+	mv -v /usr/lib/lib{readline,history}.so.* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libreadline.so) /usr/lib/libreadline.so
+	ln -sfv ../../lib/$(readlink /usr/lib/libhistory.so ) /usr/lib/libhistory.so
+	install -v -m644 doc/*.{ps,pdf,html,dvi} /usr/share/doc/readline-7.0
+)
+
+( package "bash-4.4.tar.gz"
+	patch -Np1 -i /sources/bash-4.4-upstream_fixes-1.patch
+	./configure --prefix=/usr				\
+		--docdir=/usr/share/doc/bash-4.4	\
+		--without-bash-malloc				\
+		--with-installed-readline
+	make
+	chown -Rv nobody .
+	make install
+	mv -vf /usr/bin/bash /bin
+)
+
+( package "bc-1.06.95.tar.bz2"
+	patch -Np1 -i /sources/bc-1.06.95-memory_leak-1.patch
+	./configure --prefix=/usr			\
+		--with-readline					\
+		--mandir=/usr/share/man			\
+		--infodir=/usr/share/info
+	make
+	make install
+)
+
+( package "libtool-2.4.6.tar.xz"; ./configure --prefix=/usr; make; make install )
+
+( package "gdbm-1.12.tar.gz"
+	./configure --prefix=/usr --disable-static --enable-libgdbm-compat
+	make
+	make install
+)
+
+( package "gperf-3.0.4.tar.gz"
+	./configure --prefix=/usr --docdir=/usr/share/doc/gperf-3.0.4
+	make
+	make install
+)
+
+( package "expat-2.2.0.tar.bz2"
+	./configure --prefix=/usr --disable-static
+	make
+	make install
+	install -v -dm755 /usr/share/doc/expat-2.2.0
+	install -v -m644 doc/*.{html,png,css} /usr/share/doc/expat-2.2.0
+)
+
+( package "inetutils-1.9.4.tar.xz"
+	./configure --prefix=/usr	\
+		--localstatedir=/var	\
+		--disable-logger		\
+		--disable-whois			\
+		--disable-rcp			\
+		--disable-rexec			\
+		--disable-rlogin		\
+		--disable-rsh			\
+		--disable-servers
+	make
+	make install
+	mv -v /usr/bin/{hostname,ping,ping6,traceroute} /bin
+	mv -v /usr/bin/ifconfig /sbin
+)
+
+( package "perl-5.24.1.tar.bz2"
+	echo "127.0.0.1 localhost $(hostname)" > /etc/hosts
+	export BUILD_ZLIB=False
+	export BUILD_BZIP2=0
+	sh Configure -des -Dprefix=/usr			\
+		-Dvendorprefix=/usr					\
+		-Dman1dir=/usr/share/man/man1		\
+		-Dman3dir=/usr/share/man/man3		\
+		-Dpager="/usr/bin/less -isR"		\
+		-Duseshrplib
+	make
+	make install
+	unset BUILD_ZLIB BUILD_BZIP2
+)
+
+( package "XML-Parser-2.44.tar.gz"; perl Makefile.PL; make; make install )
+
+( package "intltool-0.51.0.tar.gz"
+	sed -i 's:\\\${:\\\$\\{:' intltool-update.in
+	./configure --prefix=/usr
+	make
+	make install
+	install -v -Dm644 doc/I18N-HOWTO /usr/share/doc/intltool-0.51.0/I18N-HOWTO
+)
+
+( package "autoconf-2.69.tar.xz"; ./configure --prefix=/usr; make; make install )
+
+( package "automake-1.15.tar.xz"
+	sed -i 's:/\\\${:/\\\$\\{:' bin/automake.in
+	./configure --prefix=/usr --docdir=/usr/share/doc/automake-1.15
+	make
+	make install
+)
+
+( package "xz-5.2.3.tar.xz"
+	./configure --prefix=/usr		\
+		--disable-static			\
+		--docdir=/usr/share/doc/xz-5.2.3
+	make
+	make install
+	mv -v /usr/bin/{lzma,unlzma,lzcat,xz,unxz,xzcat} /bin
+	mv -v /usr/lib/liblzma.so.* /lib
+	ln -svf ../../lib/$(readlink /usr/lib/liblzma.so) /usr/lib/liblzma.so
+)
+
+( package "kmod-23.tar.xz"
+	./configure --prefix=/usr		\
+		--bindir=/bin				\
+		--sysconfdir=/etc			\
+		--with-rootlibdir=/lib		\
+		--with-xz					\
+		--with-zlib
+	make
+	make install
+	for target in depmod insmod lsmod modinfo modprobe rmmod; do
+		ln -sfv ../bin/kmod /sbin/$target
+	done
+	ln -sfv kmod /bin/lsmod
+)
+
+( package "gettext-0.19.8.1.tar.xz"
+	sed -i '/^TESTS =/d' gettext-runtime/tests/Makefile.in &&
+	sed -i 's/test-lock..EXEEXT.//' gettext-tools/gnulib-tests/Makefile.in
+	./configure --prefix=/usr		\
+		--disable-static			\
+		--docdir=/usr/share/doc/gettext-0.19.8.1
+	make
+	make install
+	chmod -v 0755 /usr/lib/preloadable_libintl.so
 )
