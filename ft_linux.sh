@@ -1250,3 +1250,130 @@ rm -f /usr/lib/libltdl.a
 rm -f /usr/lib/libfl.a
 rm -f /usr/lib/libfl_pic.a
 rm -f /usr/lib/libz.a
+
+#
+# ============================================================================ #
+# System configuration
+#
+
+function package
+{
+	TMP_DIR="/tmp/ft_linux_build"
+	set -e
+	cd "/sources"
+	rm -rf "$TMP_DIR"
+	mkdir -p "$TMP_DIR"
+	echo "Installing $1"
+	tar xf "$1" -C "$TMP_DIR"
+	cd "$TMP_DIR"
+	LS=$(ls)
+	if [ "$(echo "$LS" | wc -l)" -eq 1 ]
+	then cd "$LS"; fi
+}
+
+( package "lfs-bootscripts-20150222.tar.bz2"; make install )
+
+bash /lib/udev/init-net-rules.sh
+
+sed -i -e 's/"write_cd_rules"/"write_cd_rules mode"/' \
+	/etc/udev/rules.d/83-cdrom-symlinks.rules
+
+(
+	cd /etc/sysconfig/
+	cat > ifconfig.eth0 << "EOF"
+ONBOOT=yes
+IFACE=eth0
+SERVICE=ipv4-static
+IP=192.168.1.2
+GATEWAY=192.168.1.1
+PREFIX=24
+BROADCAST=192.168.1.255
+EOF
+)
+
+cat > /etc/resolv.conf << "EOF"
+# Begin /etc/resolv.conf
+
+# domain <Your Domain Name>
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+
+# End /etc/resolv.conf
+EOF
+
+echo "<lfs>" > /etc/hostname
+
+cat > /etc/hosts << "EOF"
+# Begin /etc/hosts (network card version)
+
+127.0.0.1 localhost
+
+# End /etc/hosts (network card version)
+EOF
+
+cat > /etc/inittab << "EOF"
+id:3:initdefault:
+
+si::sysinit:/etc/rc.d/init.d/rc S
+
+l0:0:wait:/etc/rc.d/init.d/rc 0
+l1:S1:wait:/etc/rc.d/init.d/rc 1
+l2:2:wait:/etc/rc.d/init.d/rc 2
+l3:3:wait:/etc/rc.d/init.d/rc 3
+l4:4:wait:/etc/rc.d/init.d/rc 4
+l5:5:wait:/etc/rc.d/init.d/rc 5
+l6:6:wait:/etc/rc.d/init.d/rc 6
+
+ca:12345:ctrlaltdel:/sbin/shutdown -t1 -a -r now
+
+su:S016:once:/sbin/sulogin
+
+1:2345:respawn:/sbin/agetty --noclear tty1 9600
+2:2345:respawn:/sbin/agetty tty2 9600
+3:2345:respawn:/sbin/agetty tty3 9600
+4:2345:respawn:/sbin/agetty tty4 9600
+5:2345:respawn:/sbin/agetty tty5 9600
+6:2345:respawn:/sbin/agetty tty6 9600
+EOF
+
+cat > /etc/sysconfig/clock << "EOF"
+UTC=1
+CLOCKPARAMS=
+EOF
+
+cat > /etc/sysconfig/rc.site << "EOF"
+OMIT_UDEV_SETTLE=y
+OMIT_UDEV_RETRY_SETTLE=y
+FASTBOOT=y
+EOF
+
+cat > /etc/profile << "EOF"
+export LANG=en_US
+EOF
+
+cat > /etc/inputrc << "EOF"
+set horizontal-scroll-mode Off
+set meta-flag On
+set input-meta On
+set convert-meta Off
+set output-meta On
+set bell-style none
+
+"\eOd": backward-word
+"\eOc": forward-word
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+"\e[5~": beginning-of-history
+"\e[6~": end-of-history
+"\e[3~": delete-char
+"\e[2~": quoted-insert
+"\eOH": beginning-of-line
+"\eOF": end-of-line
+"\e[H": beginning-of-line
+"\e[F": end-of-line
+EOF
+
+cat > /etc/shells << "EOF"
+/bin/sh
+/bin/bash
+EOF
