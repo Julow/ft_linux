@@ -942,3 +942,311 @@ passwd root
 	make install
 	chmod -v 0755 /usr/lib/preloadable_libintl.so
 )
+
+( package "procps-ng-3.3.12.tar.xz"
+	./configure --prefix=/usr						\
+		--exec-prefix=								\
+		--libdir=/usr/lib							\
+		--docdir=/usr/share/doc/procps-ng-3.3.12	\
+		--disable-static							\
+		--disable-kill
+	make
+	make install
+	mv -v /usr/lib/libprocps.so.* /lib
+	ln -sfv ../../lib/$(readlink /usr/lib/libprocps.so) /usr/lib/libprocps.so
+)
+
+( package "e2fsprogs-1.43.4.tar.gz"
+	mkdir build; cd build
+	LIBS=-L/tools/lib						\
+	CFLAGS=-I/tools/include					\
+	PKG_CONFIG_PATH=/tools/lib/pkgconfig	\
+	../configure --prefix=/usr				\
+		--bindir=/bin						\
+		--with-root-prefix=""				\
+		--enable-elf-shlibs					\
+		--disable-libblkid					\
+		--disable-libuuid					\
+		--disable-uuidd						\
+		--disable-fsck
+	make
+	make install
+	make install-libs
+	chmod -v u+w /usr/lib/{libcom_err,libe2p,libext2fs,libss}.a
+	gunzip -v /usr/share/info/libext2fs.info.gz
+	install-info --dir-file=/usr/share/info/dir /usr/share/info/libext2fs.info
+)
+
+( package "coreutils-8.26.tar.xz"
+	patch -Np1 -i /sources/coreutils-8.26-i18n-1.patch
+	sed -i '/test.lock/s/^/#/' gnulib-tests/gnulib.mk
+	FORCE_UNSAFE_CONFIGURE=1 ./configure			\
+		--prefix=/usr								\
+		--enable-no-install-program=kill,uptime
+	FORCE_UNSAFE_CONFIGURE=1 make
+	make install
+	mv -v /usr/bin/{cat,chgrp,chmod,chown,cp,date,dd,df,echo} /bin
+	mv -v /usr/bin/{false,ln,ls,mkdir,mknod,mv,pwd,rm} /bin
+	mv -v /usr/bin/{rmdir,stty,sync,true,uname} /bin
+	mv -v /usr/bin/chroot /usr/sbin
+	mv -v /usr/share/man/man1/chroot.1 /usr/share/man/man8/chroot.8
+	sed -i s/\"1\"/\"8\"/1 /usr/share/man/man8/chroot.8
+	mv -v /usr/bin/{head,sleep,nice,test,[} /bin
+)
+
+( package "diffutils-3.5.tar.xz"
+	sed -i 's:= @mkdir_p@:= /bin/mkdir -p:' po/Makefile.in.in
+	./configure --prefix=/usr
+	make
+	make install
+)
+
+( package "gawk-4.1.4.tar.xz"
+	./configure --prefix=/usr
+	make
+	make install
+)
+
+( package "findutils-4.6.0.tar.gz"
+	sed -i 's/test-lock..EXEEXT.//' tests/Makefile.in
+	./configure --prefix=/usr --localstatedir=/var/lib/locate
+	make
+	make install
+)
+
+( package "groff-1.22.3.tar.gz"
+	PAGE=A4 ./configure --prefix=/usr
+	make
+	make install
+)
+
+( package "grub-2.02~beta3.tar.xz"
+	./configure --prefix=/usr	\
+		--sbindir=/sbin			\
+		--sysconfdir=/etc		\
+		--disable-efiemu		\
+		--disable-werror
+	make
+	make install
+)
+
+( package "less-481.tar.gz"
+	./configure --prefix=/usr --sysconfdir=/etc
+	make
+	make install
+)
+
+( package "gzip-1.8.tar.xz"
+	./configure --prefix=/usr
+	make
+	make install
+	mv -v /usr/bin/gzip /bin
+)
+
+( package "iproute2-4.9.0.tar.xz"
+	sed -i /ARPD/d Makefile
+	sed -i 's/arpd.8//' man/man8/Makefile
+	rm -v doc/arpd.sgml
+	sed -i 's/m_ipt.o//' tc/Makefile
+	make
+	make DOCDIR=/usr/share/doc/iproute2-4.9.0 install
+)
+
+( package "kbd-2.0.4.tar.xz"
+	patch -Np1 -i /sources/kbd-2.0.4-backspace-1.patch
+	sed -i 's/\(RESIZECONS_PROGS=\)yes/\1no/g' configure
+	sed -i 's/resizecons.8 //' docs/man/man8/Makefile.in
+	PKG_CONFIG_PATH=/tools/lib/pkgconfig ./configure --prefix=/usr --disable-vlock
+	make
+	make install
+)
+
+( package "libpipeline-1.4.1.tar.gz"
+	PKG_CONFIG_PATH=/tools/lib/pkgconfig ./configure --prefix=/usr
+	make
+	make install
+)
+
+( package "make-4.2.1.tar.bz2"
+	./configure --prefix=/usr
+	make
+	make install
+)
+
+( package "patch-2.7.5.tar.xz"
+	./configure --prefix=/usr
+	make
+	make install
+)
+
+( package "sysklogd-1.5.1.tar.gz"
+	sed -i '/Error loading kernel symbols/{n;n;d}' ksym_mod.c
+	sed -i 's/union wait/int/' syslogd.c
+	make
+	make BINDIR=/sbin install
+	cat > /etc/syslog.conf << "EOF"
+# Begin /etc/syslog.conf
+
+auth,authpriv.* -/var/log/auth.log
+*.*;auth,authpriv.none -/var/log/sys.log
+daemon.* -/var/log/daemon.log
+kern.* -/var/log/kern.log
+mail.* -/var/log/mail.log
+user.* -/var/log/user.log
+*.emerg *
+
+# End /etc/syslog.conf
+EOF
+)
+
+( package "sysvinit-2.88dsf.tar.bz2"
+	patch -Np1 -i /sources/sysvinit-2.88dsf-consolidated-1.patch
+	make -C src
+	make -C src install
+)
+
+( package "eudev-3.2.1.tar.gz"
+	sed -r -i 's|/usr(/bin/test)|\1|' test/udev-test.pl
+	sed -i '/keyboard_lookup_key/d' src/udev/udev-builtin-keyboard.c
+	cat > config.cache << "EOF"
+HAVE_BLKID=1
+BLKID_LIBS="-lblkid"
+BLKID_CFLAGS="-I/tools/include"
+EOF
+	./configure --prefix=/usr		\
+		--bindir=/sbin				\
+		--sbindir=/sbin				\
+		--libdir=/usr/lib			\
+		--sysconfdir=/etc			\
+		--libexecdir=/lib			\
+		--with-rootprefix=			\
+		--with-rootlibdir=/lib		\
+		--enable-manpages			\
+		--disable-static			\
+		--config-cache
+	LIBRARY_PATH=/tools/lib make
+	mkdir -pv /lib/udev/rules.d
+	mkdir -pv /etc/udev/rules.d
+	make LD_LIBRARY_PATH=/tools/lib install
+	tar -xvf /sources/udev-lfs-20140408.tar.bz2
+	make -f udev-lfs-20140408/Makefile.lfs install
+	LD_LIBRARY_PATH=/tools/lib udevadm hwdb --update
+)
+
+( package "util-linux-2.29.1.tar.xz"
+	mkdir -pv /var/lib/hwclock
+	./configure ADJTIME_PATH=/var/lib/hwclock/adjtime	\
+		--docdir=/usr/share/doc/util-linux-2.29.1		\
+		--disable-chfn-chsh								\
+		--disable-login									\
+		--disable-nologin								\
+		--disable-su									\
+		--disable-setpriv								\
+		--disable-runuser								\
+		--disable-pylibmount							\
+		--disable-static								\
+		--without-python								\
+		--without-systemd								\
+		--without-systemdsystemunitdir
+	make
+	make install
+)
+
+( package "man-db-2.7.6.1.tar.xz"
+	./configure --prefix=/usr					\
+		--docdir=/usr/share/doc/man-db-2.7.6.1	\
+		--sysconfdir=/etc						\
+		--disable-setuid						\
+		--enable-cache-owner=bin				\
+		--with-browser=/usr/bin/lynx			\
+		--with-vgrind=/usr/bin/vgrind			\
+		--with-grap=/usr/bin/grap				\
+		--with-systemdtmpfilesdir=
+	make
+	make install
+)
+
+( package "tar-1.29.tar.xz"
+	FORCE_UNSAFE_CONFIGURE=1	\
+	./configure --prefix=/usr	\
+		--bindir=/bin
+	make
+	make install
+)
+
+( package "texinfo-6.3.tar.xz"
+	./configure --prefix=/usr --disable-static
+	make
+	make install
+)
+
+( package "vim-8.0.069.tar.bz2"
+	echo '#define SYS_VIMRC_FILE "/etc/vimrc"' >> src/feature.h
+	./configure --prefix=/usr
+	make
+	make install
+	ln -sv vim /usr/bin/vi
+	for L in  /usr/share/man/{,*/}man1/vim.1; do
+		ln -sv vim.1 $(dirname $L)/vi.1
+	done
+	cat > /etc/vimrc << "EOF"
+" Begin /etc/vimrc
+
+set nocompatible
+set backspace=2
+set mouse=r
+syntax on
+if (&term == "xterm") || (&term == "putty")
+  set background=dark
+endif
+
+
+" End /etc/vimrc
+EOF
+)
+
+# Done
+
+logout
+
+chroot "$LFS" /tools/bin/env -i			\
+	HOME=/root							\
+	TERM="$TERM"						\
+	PS1='\u:\w\$ '						\
+	PATH=/bin:/usr/bin:/sbin:/usr/sbin	\
+	/tools/bin/bash --login
+
+#
+# ============================================================================ #
+# Strip & clean up
+#
+
+/tools/bin/find /usr/lib -type f -name \*.a \
+	-exec /tools/bin/strip --strip-debug {} ';'
+
+/tools/bin/find /lib /usr/lib -type f -name \*.so* \
+	-exec /tools/bin/strip --strip-unneeded {} ';'
+
+/tools/bin/find /{bin,sbin} /usr/{bin,sbin,libexec} -type f \
+	-exec /tools/bin/strip --strip-all {} ';'
+
+rm -rf /tmp/*
+
+# Done
+
+logout
+
+chroot "$LFS" /usr/bin/env -i			\
+	HOME=/root							\
+	TERM="$TERM"						\
+	PS1='\u:\w\$ '						\
+	PATH=/bin:/usr/bin:/sbin:/usr/sbin	\
+	/bin/bash --login
+
+rm -f /usr/lib/lib{bfd,opcodes}.a
+rm -f /usr/lib/libbz2.a
+rm -f /usr/lib/lib{com_err,e2p,ext2fs,ss}.a
+rm -f /usr/lib/libltdl.a
+rm -f /usr/lib/libfl.a
+rm -f /usr/lib/libfl_pic.a
+rm -f /usr/lib/libz.a
